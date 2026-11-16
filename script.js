@@ -1,130 +1,55 @@
-console.log("script.js cargado correctamente");
-console.log(typeof ObtenerMetadatosArchivo);
-function Base64UrlDecode(input) {
-    let base64 = input.replace(/-/g, '+').replace(/_/g, '/');
 
-    while (base64.length % 4 !== 0) {
-        base64 += '=';
-    }
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mega.nz Downloader Web</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
+    <h1>Mega.nz Downloader Web</h1>
 
-    for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
+    <input
+        type="text"
+        id="megaUrl"
+        placeholder="Pegá tu enlace de MEGA"
+    >
 
-    return bytes;
-}
+    <button id="downloadBtn">Obtener metadatos</button>
 
-async function ObtenerMetadatosArchivo(url) {
+    <pre id="resultado"></pre>
 
-    // 1. Extraer ID y clave del enlace
-    const match = url.match(
-        /mega\.(?:nz|io)\/file\/([^#/?]+)#([^&]+)/
-    );
+    <script src="script.js"></script>
 
-    if (!match) {
-        throw new Error("URL de archivo MEGA invalida.");
-    }
+    <script>
+        document.getElementById("downloadBtn").addEventListener("click", async () => {
 
-    const id_archivo = match[1];
-    const clave_cifrado = match[2];
+            const url = document.getElementById("megaUrl").value.trim();
+            const resultado = document.getElementById("resultado");
 
-    // 2. Decodificar clave Base64URL
-    const key = Base64UrlDecode(clave_cifrado);
+            try {
+                resultado.textContent = "Consultando MEGA...";
 
-    if (key.length !== 32) {
-        throw new Error("La clave debe tener 32 bytes.");
-    }
+                const datos = await window.ObtenerMetadatosArchivo(url);
 
-    // 3. Obtener clave AES
-    const aesKey = new Uint8Array(16);
+                resultado.textContent =
+                    "ID: " + datos.id_archivo + "\n" +
+                    "Nombre: " + datos.nombre + "\n" +
+                    "Tamaño: " + datos.tamanio + " bytes\n" +
+                    "Clave AES: " +
+                    Array.from(datos.aesKey)
+                        .map(b => b.toString(16).padStart(2, "0"))
+                        .join("");
 
-    for (let i = 0; i < 16; i++) {
-        aesKey[i] = key[i] ^ key[i + 16];
-    }
+            } catch (error) {
+                console.error(error);
+                resultado.textContent = "Error: " + error.message;
+            }
 
-    // 4. Consultar API de MEGA
-    const apiUrl = "https://g.api.mega.co.nz/cs?domain=meganz&lang=en";
+        });
+    </script>
 
-    const payload = [{
-        a: "g",
-        g: 1,
-        ssl: 0,
-        p: id_archivo
-    }];
-
-    const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-            "Content-Type": "text/plain;charset=UTF-8"
-        },
-        body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-        throw new Error("Error HTTP: " + response.status);
-    }
-
-    const data = await response.json();
-    const item = data[0];
-
-    if (typeof item === "number") {
-        throw new Error("Error de API MEGA: " + item);
-    }
-
-    if (!item || !item.at) {
-        throw new Error("La API no devolvio el atributo cifrado.");
-    }
-
-    // 5. Decodificar atributos cifrados
-    const encrypted = Base64UrlDecode(item.at);
-
-    if (encrypted.length === 0 || encrypted.length % 16 !== 0) {
-        throw new Error("Longitud del atributo cifrado invalida.");
-    }
-
-    // 6. Descifrar atributos AES-CBC
-    const cryptoKey = await crypto.subtle.importKey(
-        "raw",
-        aesKey,
-        { name: "AES-CBC" },
-        false,
-        ["decrypt"]
-    );
-
-    const decrypted = await crypto.subtle.decrypt(
-        {
-            name: "AES-CBC",
-            iv: new Uint8Array(16)
-        },
-        cryptoKey,
-        encrypted
-    );
-
-    // 7. Obtener atributos
-    const bytes = new Uint8Array(decrypted);
-
-    let plainText = new TextDecoder("utf-8").decode(bytes);
-
-    plainText = plainText.replace(/\0+$/, "");
-
-    if (!plainText.startsWith("MEGA")) {
-        throw new Error("No se pudieron descifrar los atributos.");
-    }
-
-    const attributes = JSON.parse(plainText.substring(4));
-
-    const nombre = attributes.n;
-    const tamanio = Number(item.s);
-
-    // 8. Devolver metadatos
-    return {
-        id_archivo,
-        nombre,
-        tamanio,
-        clave_cifrado,
-        aesKey
-    };
-}
+</body>
+</html>
