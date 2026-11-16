@@ -1,4 +1,5 @@
-
+console.log("script.js cargado correctamente");
+console.log(typeof ObtenerMetadatosArchivo);
 function Base64UrlDecode(input) {
     let base64 = input.replace(/-/g, '+').replace(/_/g, '/');
 
